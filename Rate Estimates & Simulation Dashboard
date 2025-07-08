@@ -1,0 +1,393 @@
+import React, { useState, useMemo } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, ScatterChart, Scatter, PieChart, Pie, Cell } from 'recharts';
+import { Filter, Download, RefreshCw, TrendingUp, BarChart3, PieChart, Activity } from 'lucide-react';
+
+// Sample data for rate estimates and simulations
+const generateSampleData = () => {
+  const scenarios = ['Conservative', 'Moderate', 'Aggressive', 'Optimistic'];
+  const products = ['Product A', 'Product B', 'Product C', 'Product D'];
+  const regions = ['North', 'South', 'East', 'West'];
+  
+  return Array.from({ length: 200 }, (_, i) => ({
+    id: i + 1,
+    date: new Date(2024, 0, 1 + Math.floor(i / 5)).toISOString().split('T')[0],
+    scenario: scenarios[Math.floor(Math.random() * scenarios.length)],
+    product: products[Math.floor(Math.random() * products.length)],
+    region: regions[Math.floor(Math.random() * regions.length)],
+    baseRate: 0.02 + Math.random() * 0.08,
+    simulatedRate: 0.015 + Math.random() * 0.09,
+    confidence: 0.7 + Math.random() * 0.3,
+    iterations: 1000 + Math.floor(Math.random() * 9000),
+    variance: Math.random() * 0.001,
+    category: Math.random() > 0.5 ? 'High Risk' : 'Low Risk',
+    volume: 100 + Math.floor(Math.random() * 1000)
+  }));
+};
+
+const Dashboard = () => {
+  const [data] = useState(generateSampleData());
+  const [filters, setFilters] = useState({
+    scenario: 'All',
+    product: 'All',
+    region: 'All',
+    dateRange: 'All',
+    category: 'All'
+  });
+  const [chartType, setChartType] = useState('line');
+  const [selectedMetric, setSelectedMetric] = useState('baseRate');
+
+  // Filter data based on current filters
+  const filteredData = useMemo(() => {
+    return data.filter(item => {
+      return (filters.scenario === 'All' || item.scenario === filters.scenario) &&
+             (filters.product === 'All' || item.product === filters.product) &&
+             (filters.region === 'All' || item.region === filters.region) &&
+             (filters.category === 'All' || item.category === filters.category);
+    });
+  }, [data, filters]);
+
+  // Aggregate data for visualization
+  const aggregatedData = useMemo(() => {
+    const grouped = filteredData.reduce((acc, item) => {
+      const key = item.date;
+      if (!acc[key]) {
+        acc[key] = {
+          date: key,
+          baseRate: 0,
+          simulatedRate: 0,
+          confidence: 0,
+          count: 0,
+          variance: 0,
+          volume: 0
+        };
+      }
+      acc[key].baseRate += item.baseRate;
+      acc[key].simulatedRate += item.simulatedRate;
+      acc[key].confidence += item.confidence;
+      acc[key].variance += item.variance;
+      acc[key].volume += item.volume;
+      acc[key].count += 1;
+      return acc;
+    }, {});
+
+    return Object.values(grouped).map(item => ({
+      ...item,
+      baseRate: (item.baseRate / item.count).toFixed(4),
+      simulatedRate: (item.simulatedRate / item.count).toFixed(4),
+      confidence: (item.confidence / item.count).toFixed(3),
+      variance: (item.variance / item.count).toFixed(6),
+      volume: Math.floor(item.volume / item.count)
+    })).sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [filteredData]);
+
+  // Get unique values for filter options
+  const getUniqueValues = (field) => {
+    return ['All', ...new Set(data.map(item => item[field]))];
+  };
+
+  const updateFilter = (filterType, value) => {
+    setFilters(prev => ({ ...prev, [filterType]: value }));
+  };
+
+  // Calculate summary statistics
+  const summaryStats = useMemo(() => {
+    if (filteredData.length === 0) return {};
+    
+    const baseRates = filteredData.map(d => d.baseRate);
+    const simulatedRates = filteredData.map(d => d.simulatedRate);
+    
+    return {
+      totalRecords: filteredData.length,
+      avgBaseRate: (baseRates.reduce((a, b) => a + b, 0) / baseRates.length).toFixed(4),
+      avgSimulatedRate: (simulatedRates.reduce((a, b) => a + b, 0) / simulatedRates.length).toFixed(4),
+      avgConfidence: (filteredData.reduce((a, b) => a + b.confidence, 0) / filteredData.length).toFixed(3),
+      highRiskCount: filteredData.filter(d => d.category === 'High Risk').length
+    };
+  }, [filteredData]);
+
+  // Scenario comparison data
+  const scenarioData = useMemo(() => {
+    const scenarios = ['Conservative', 'Moderate', 'Aggressive', 'Optimistic'];
+    return scenarios.map(scenario => {
+      const scenarioItems = filteredData.filter(item => item.scenario === scenario);
+      const avgRate = scenarioItems.length > 0 
+        ? scenarioItems.reduce((sum, item) => sum + item.simulatedRate, 0) / scenarioItems.length
+        : 0;
+      return {
+        scenario,
+        rate: avgRate.toFixed(4),
+        count: scenarioItems.length
+      };
+    });
+  }, [filteredData]);
+
+  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#8dd1e1'];
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Rate Estimates & Simulation Dashboard</h1>
+              <p className="text-gray-600 mt-2">Monitor and analyze rate estimation models and simulation results</p>
+            </div>
+            <div className="flex gap-3">
+              <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                <RefreshCw size={16} />
+                Refresh
+              </button>
+              <button className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                <Download size={16} />
+                Export
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Controls */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Filter size={20} className="text-gray-600" />
+            <h2 className="text-xl font-semibold text-gray-900">Filters</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Scenario</label>
+              <select 
+                value={filters.scenario} 
+                onChange={(e) => updateFilter('scenario', e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {getUniqueValues('scenario').map(scenario => (
+                  <option key={scenario} value={scenario}>{scenario}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Product</label>
+              <select 
+                value={filters.product} 
+                onChange={(e) => updateFilter('product', e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {getUniqueValues('product').map(product => (
+                  <option key={product} value={product}>{product}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Region</label>
+              <select 
+                value={filters.region} 
+                onChange={(e) => updateFilter('region', e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {getUniqueValues('region').map(region => (
+                  <option key={region} value={region}>{region}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+              <select 
+                value={filters.category} 
+                onChange={(e) => updateFilter('category', e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {getUniqueValues('category').map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Chart Type</label>
+              <select 
+                value={chartType} 
+                onChange={(e) => setChartType(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="line">Line Chart</option>
+                <option value="bar">Bar Chart</option>
+                <option value="scatter">Scatter Plot</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Summary Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <TrendingUp className="h-8 w-8 text-blue-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Total Records</p>
+                <p className="text-2xl font-bold text-gray-900">{summaryStats.totalRecords}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <Activity className="h-8 w-8 text-green-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Avg Base Rate</p>
+                <p className="text-2xl font-bold text-gray-900">{summaryStats.avgBaseRate}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <BarChart3 className="h-8 w-8 text-purple-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Avg Simulated Rate</p>
+                <p className="text-2xl font-bold text-gray-900">{summaryStats.avgSimulatedRate}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <Activity className="h-8 w-8 text-orange-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Avg Confidence</p>
+                <p className="text-2xl font-bold text-gray-900">{summaryStats.avgConfidence}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <Filter className="h-8 w-8 text-red-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">High Risk Items</p>
+                <p className="text-2xl font-bold text-gray-900">{summaryStats.highRiskCount}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Charts Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Main Rate Comparison Chart */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Rate Comparison Over Time</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              {chartType === 'line' && (
+                <LineChart data={aggregatedData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="baseRate" stroke="#8884d8" name="Base Rate" />
+                  <Line type="monotone" dataKey="simulatedRate" stroke="#82ca9d" name="Simulated Rate" />
+                </LineChart>
+              )}
+              {chartType === 'bar' && (
+                <BarChart data={aggregatedData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="baseRate" fill="#8884d8" name="Base Rate" />
+                  <Bar dataKey="simulatedRate" fill="#82ca9d" name="Simulated Rate" />
+                </BarChart>
+              )}
+              {chartType === 'scatter' && (
+                <ScatterChart data={filteredData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="baseRate" name="Base Rate" />
+                  <YAxis dataKey="simulatedRate" name="Simulated Rate" />
+                  <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                  <Scatter name="Rate Comparison" data={filteredData} fill="#8884d8" />
+                </ScatterChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+
+          {/* Scenario Comparison */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Scenario Comparison</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={scenarioData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="scenario" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="rate" fill="#ffc658" name="Average Rate" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Additional Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Confidence Distribution */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Confidence Distribution</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={aggregatedData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="confidence" stroke="#ff7300" name="Confidence Level" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Risk Category Distribution */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Category Distribution</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'High Risk', value: filteredData.filter(d => d.category === 'High Risk').length },
+                    { name: 'Low Risk', value: filteredData.filter(d => d.category === 'Low Risk').length }
+                  ]}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                  label
+                >
+                  {[
+                    { name: 'High Risk', value: filteredData.filter(d => d.category === 'High Risk').length },
+                    { name: 'Low Risk', value: filteredData.filter(d => d.category === 'Low Risk').length }
+                  ].map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Dashboard;
